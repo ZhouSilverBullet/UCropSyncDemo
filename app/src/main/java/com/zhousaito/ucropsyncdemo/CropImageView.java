@@ -9,6 +9,8 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.lang.ref.WeakReference;
+
 /**
  * @Author zhouzhou
  * @Date :12/13/20
@@ -117,5 +119,93 @@ public class CropImageView extends TransformImageView {
         mCurrentImageMatrix.postTranslate(tw, th);
 
         setImageMatrix(mCurrentImageMatrix);
+    }
+
+    /**
+     * 点击放大，放大动画使用这个
+     *
+     * @param px
+     * @param py
+     */
+    protected void zoomImageToPosition(float scale, float px, float py, int duration) {
+        if (scale > mMaxScale) {
+            scale = mMaxScale;
+        }
+        float oldScale = getCurrentScale();
+        float deltaScale = scale - oldScale;
+
+        post(new ZoomInImageRunnable(this, duration,
+                deltaScale, oldScale, px, py));
+    }
+
+    public void zoomImImage(float scale, float px, float py) {
+        if (scale < getMaxScale()) {
+            postScale(scale / getCurrentScale(), px, py);
+        }
+    }
+
+    @Override
+    protected void postScale(float scaleFactor, float px, float py) {
+        super.postScale(scaleFactor, px, py);
+    }
+
+    public float getMaxScale() {
+        return mMaxScale;
+    }
+
+    public float getMinScale() {
+        return mMinScale;
+    }
+
+    private static class ZoomInImageRunnable implements Runnable {
+
+        private WeakReference<CropImageView> mCropImageViewDef;
+        //执行的总时长
+        private long mDurationMs;
+        //开始执行的时间
+        private long mStartTime;
+        //当前需要缩放的大小
+        private float mDeltaScale;
+        //老的那一次缩放
+        private float mOldScale;
+
+        //缩放中心点
+        private float mCenterX;
+        private float mCenterY;
+
+        public ZoomInImageRunnable(CropImageView cropImageView,
+                                   long durationMs,
+                                   float deltaScale,
+                                   float oldScale,
+                                   float centerX,
+                                   float centerY) {
+
+            mCropImageViewDef = new WeakReference<>(cropImageView);
+            mDurationMs = durationMs;
+            mDeltaScale = deltaScale;
+            mOldScale = oldScale;
+            mCenterX = centerX;
+            mCenterY = centerY;
+
+            mStartTime = System.currentTimeMillis();
+        }
+
+        @Override
+        public void run() {
+            CropImageView cropImageView = mCropImageViewDef.get();
+            if (cropImageView == null) {
+                return;
+            }
+
+            long now = System.currentTimeMillis();
+            float currentMs = Math.min(mDurationMs, now - mStartTime);
+            float newScale = CubicEasing.easeInOut(currentMs, 0, mDeltaScale, mDurationMs);
+
+            if (currentMs < mDurationMs) {
+                cropImageView.zoomImImage(mOldScale + newScale, mCenterX, mCenterY);
+                cropImageView.post(this);
+            }
+
+        }
     }
 }

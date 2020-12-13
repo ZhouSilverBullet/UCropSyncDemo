@@ -59,7 +59,7 @@ public class GestureImageView extends CropImageView {
     private class GestureListener extends GestureDetector.SimpleOnGestureListener {
         @Override
         public boolean onDoubleTap(MotionEvent e) {
-            zoomInImage(e.getX(), e.getY());
+            zoomImageToPosition(calcZoomImageToPositionScale(), e.getX(), e.getY(), 200);
             return super.onDoubleTap(e);
         }
 
@@ -68,6 +68,10 @@ public class GestureImageView extends CropImageView {
             postTranslate(-distanceX, -distanceY);
             return true;
         }
+    }
+
+    public float calcZoomImageToPositionScale() {
+        return getCurrentScale() * (float) Math.pow(getMaxScale() / getMinScale(), 1.0f / 5);
     }
 
     private class ScaleGestureListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
