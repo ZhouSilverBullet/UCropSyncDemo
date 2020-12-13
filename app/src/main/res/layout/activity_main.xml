@@ -8,8 +8,13 @@
     tools:context=".MainActivity">
 
     <com.zhousaito.ucropsyncdemo.GestureImageView
+        android:id="@+id/cropImageView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:src="@drawable/image_decr" />
 
+    <com.zhousaito.ucropsyncdemo.CropView
+        android:id="@+id/cropView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 </FrameLayout>

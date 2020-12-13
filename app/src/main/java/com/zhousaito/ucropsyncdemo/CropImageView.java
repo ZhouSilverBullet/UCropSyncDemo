@@ -32,6 +32,7 @@ public class CropImageView extends TransformImageView {
     private Matrix mTempMatrix = new Matrix();
 
     private ZoomInImageRunnable mZoomInImageRunnable;
+    private ImageWrapCropBoundsRunnable mWrapCropBoundsRunnable;
 
 
     public CropImageView(@NonNull Context context) {
@@ -97,7 +98,7 @@ public class CropImageView extends TransformImageView {
         mRatio = cropRect.width() / cropRect.height();
         mCropRect.set(cropRect.left - getPaddingLeft(), cropRect.top - getPaddingTop(),
                 cropRect.right - getPaddingRight(), cropRect.bottom - getPaddingBottom());
-        
+
         Drawable drawable = getDrawable();
         if (drawable != null) {
             calcImageScaleBounds(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
@@ -163,6 +164,7 @@ public class CropImageView extends TransformImageView {
     }
 
     protected void cancelAllAnimations() {
+        removeCallbacks(mWrapCropBoundsRunnable);
         removeCallbacks(mZoomInImageRunnable);
     }
 
@@ -222,8 +224,9 @@ public class CropImageView extends TransformImageView {
         }
 
         if (isAnimation) {
-            post(new ImageWrapCropBoundsRunnable(this, 500,
-                    currentScale, deltaScale, currentX, currentY, deltaX, deltaY, isWrapperInCropBounds));
+            mWrapCropBoundsRunnable = new ImageWrapCropBoundsRunnable(this, 500,
+                    currentScale, deltaScale, currentX, currentY, deltaX, deltaY, isWrapperInCropBounds);
+            post(mWrapCropBoundsRunnable);
         } else {
             postTranslate(deltaX, deltaY);
             if (!isWrapperInCropBounds) {
