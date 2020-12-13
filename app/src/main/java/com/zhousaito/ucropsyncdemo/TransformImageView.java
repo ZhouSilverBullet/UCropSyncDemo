@@ -5,10 +5,13 @@ import android.graphics.Matrix;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.AppCompatImageView;
+
+import java.util.Arrays;
 
 /**
  * @Author zhouzhou
@@ -18,12 +21,18 @@ import androidx.appcompat.widget.AppCompatImageView;
  */
 
 public class TransformImageView extends AppCompatImageView {
-    protected String TAG = getClass().getName();
+    protected String TAG = getClass().getSimpleName();
 
     //当前在变换的Matrix，用户看到的
     protected Matrix mCurrentImageMatrix = new Matrix();
     protected float mThisWidth;
     protected float mThisHeight;
+
+    protected float[] mInitialImageCorners;
+    protected float[] mInitialImageCenter;
+
+    protected float[] mCurrentImageCorners = new float[8];
+    protected float[] mCurrentImageCenter = new float[2];
 
     protected float[] mValues = new float[9];
 
@@ -50,6 +59,7 @@ public class TransformImageView extends AppCompatImageView {
     public void setImageMatrix(Matrix matrix) {
         super.setImageMatrix(matrix);
         mCurrentImageMatrix.set(matrix);
+        updateCurrentImagePoints();
     }
 
     @Override
@@ -72,6 +82,11 @@ public class TransformImageView extends AppCompatImageView {
         int drawableWidth = drawable.getIntrinsicWidth();
         int drawableHeight = drawable.getIntrinsicHeight();
 
+        RectF rectF = new RectF(0, 0, drawableWidth, drawableHeight);
+
+        //获取初始化的值，用于判断最初的Matrix的初始化值，用于越界回弹使用
+        mInitialImageCorners = RectUtils.createCorners(rectF);
+        mInitialImageCenter = RectUtils.createCenter(rectF);
     }
 
     protected void postTranslate(float translateX, float translateY) {
@@ -83,7 +98,6 @@ public class TransformImageView extends AppCompatImageView {
         mCurrentImageMatrix.postScale(scaleFactor, scaleFactor, px, py);
         setImageMatrix(mCurrentImageMatrix);
     }
-
 
     protected float getCurrentScale() {
         return getCurrentScale(mCurrentImageMatrix);
@@ -97,5 +111,17 @@ public class TransformImageView extends AppCompatImageView {
     private double getMatrixValues(Matrix matrix, int index) {
         matrix.getValues(mValues);
         return mValues[index];
+    }
+
+    /**
+     * 每次都更新一下变换后的值，用于回弹的时候使用
+     */
+    private void updateCurrentImagePoints() {
+        mCurrentImageMatrix.mapPoints(mCurrentImageCorners, mInitialImageCorners);
+        mCurrentImageMatrix.mapPoints(mCurrentImageCenter, mInitialImageCenter);
+
+        Log.i(TAG, "cur: " + Arrays.toString(mCurrentImageCorners)+", init: " + Arrays.toString(mInitialImageCorners));
+        Log.i(TAG, "curCen: " + Arrays.toString(mCurrentImageCenter)+", initCen: " + Arrays.toString(mInitialImageCenter));
+
     }
 }

@@ -45,6 +45,7 @@ public class GestureImageView extends CropImageView {
     public boolean onTouchEvent(MotionEvent event) {
         if ((event.getAction() & MotionEvent.ACTION_MASK) == MotionEvent.ACTION_DOWN) {
             //取消动画的操作
+            cancelAllAnimations();
         }
 
         mGestureDetector.onTouchEvent(event);
@@ -52,6 +53,7 @@ public class GestureImageView extends CropImageView {
 
         if ((event.getAction() & MotionEvent.ACTION_MASK) == MotionEvent.ACTION_UP) {
             //进行一些动画的操作
+            setImageToWrapCropBounds();
         }
         return true;
     }

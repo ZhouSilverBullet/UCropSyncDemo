@@ -1,6 +1,7 @@
 package com.zhousaito.ucropsyncdemo;
 
 import android.content.Context;
+import android.graphics.Matrix;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
@@ -10,6 +11,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.lang.ref.WeakReference;
+import java.util.Arrays;
 
 /**
  * @Author zhouzhou
@@ -26,6 +28,10 @@ public class CropImageView extends TransformImageView {
 
     protected float mRatio;
     private RectF mCropRect = new RectF();
+
+    private Matrix mTempMatrix = new Matrix();
+
+    private ZoomInImageRunnable mZoomInImageRunnable;
 
 
     public CropImageView(@NonNull Context context) {
@@ -87,6 +93,17 @@ public class CropImageView extends TransformImageView {
         setImageInitialPosition(drawableWidth, drawableHeight);
     }
 
+    public void setCropRect(RectF cropRect) {
+        mRatio = cropRect.width() / cropRect.height();
+        mCropRect.set(cropRect.left - getPaddingLeft(), cropRect.top - getPaddingTop(),
+                cropRect.right - getPaddingRight(), cropRect.bottom - getPaddingBottom());
+        
+        Drawable drawable = getDrawable();
+        if (drawable != null) {
+            calcImageScaleBounds(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+        }
+        setImageToWrapCropBounds();
+    }
 
     /**
      * 计算缩放界限
@@ -134,14 +151,139 @@ public class CropImageView extends TransformImageView {
         float oldScale = getCurrentScale();
         float deltaScale = scale - oldScale;
 
-        post(new ZoomInImageRunnable(this, duration,
-                deltaScale, oldScale, px, py));
+        mZoomInImageRunnable = new ZoomInImageRunnable(this, duration,
+                deltaScale, oldScale, px, py);
+        post(mZoomInImageRunnable);
     }
 
-    public void zoomImImage(float scale, float px, float py) {
+    public void zoomInImage(float scale, float px, float py) {
         if (scale < getMaxScale()) {
             postScale(scale / getCurrentScale(), px, py);
         }
+    }
+
+    protected void cancelAllAnimations() {
+        removeCallbacks(mZoomInImageRunnable);
+    }
+
+    protected void setImageToWrapCropBounds() {
+        setImageToWrapCropBounds(true);
+    }
+
+    /**
+     * 这里要进行计算，
+     * 开始的坐标  ---转换---> 符合标准的坐标
+     *
+     * @param isAnimation
+     */
+    protected void setImageToWrapCropBounds(boolean isAnimation) {
+
+
+//        //假设在偏移在右边
+//        float dx = mCropRect.centerX() - mCurrentImageCenter[0];
+//        float dy = mCropRect.centerY() - mCurrentImageCenter[1];
+
+//        mTempMatrix.reset();
+//
+//        Log.i(TAG, "dx: " + dx + ", dy: " + dy + ", scale: " + getCurrentScale());
+//        postTranslate(dx, dy);
+
+        float currentX = mCurrentImageCenter[0];
+        float currentY = mCurrentImageCenter[1];
+        float currentScale = getCurrentScale();
+
+        float deltaX = mCropRect.centerX() - currentX;
+        float deltaY = mCropRect.centerY() - currentY;
+        float deltaScale = 0f;
+
+        //计算好，移动后当前的Rect是否包含在初始化Rect的里面
+        mTempMatrix.reset();
+        mTempMatrix.postTranslate(deltaX, deltaY);
+        //复制一份当前的值
+        float[] mTempImageCorners = Arrays.copyOf(mCurrentImageCorners, mCurrentImageCorners.length);
+        mTempMatrix.mapPoints(mTempImageCorners);
+
+        boolean isWrapperInCropBounds = isWrapperInCropBounds(mTempImageCorners);
+        Log.i(TAG, "isWrapperInCropBounds: " + isWrapperInCropBounds);
+        if (isWrapperInCropBounds) { //这个不用涉及到缩放的时候，只要平移就能解决问题的
+            float[] floats = calcOtherArea();
+            deltaX = -(floats[0] + floats[2]);
+            deltaY = -(floats[1] + floats[3]);
+        } else {
+            RectF tempCropRect = new RectF(mCropRect);
+
+//            mTempMatrix.reset();
+//            mTempMatrix.mapRect(tempCropRect);
+            float with = mCurrentImageCorners[2] - mCurrentImageCorners[0];
+            float height = mCurrentImageCorners[5] - mCurrentImageCorners[1];
+
+            deltaScale = Math.max(tempCropRect.width() / with, tempCropRect.height() / height);
+            deltaScale = deltaScale * currentScale - currentScale;
+        }
+
+        if (isAnimation) {
+            post(new ImageWrapCropBoundsRunnable(this, 500,
+                    currentScale, deltaScale, currentX, currentY, deltaX, deltaY, isWrapperInCropBounds));
+        } else {
+            postTranslate(deltaX, deltaY);
+            if (!isWrapperInCropBounds) {
+                zoomInImage(currentScale + deltaScale, mCropRect.centerX(), mCropRect.centerY());
+            }
+        }
+    }
+
+    private float[] calcOtherArea() {
+        mTempMatrix.reset();
+
+        float[] currentImageCorners = Arrays.copyOf(mCurrentImageCorners, mCurrentImageCorners.length);
+        float[] corpImageCorners = RectUtils.createCorners(mCropRect);
+
+        mTempMatrix.mapPoints(currentImageCorners);
+        mTempMatrix.mapPoints(corpImageCorners);
+
+        RectF currentRect = RectUtils.array2Rect(currentImageCorners);
+        RectF cropRect = RectUtils.array2Rect(corpImageCorners);
+
+        float deltaLeft = currentRect.left - cropRect.left;
+        float deltaTop = currentRect.top - cropRect.top;
+        float deltaRight = currentRect.right - cropRect.right;
+        float deltaBottom = currentRect.bottom - cropRect.bottom;
+
+        float[] floats = new float[4];
+        floats[0] = deltaLeft > 0 ? deltaLeft : 0;
+        floats[1] = deltaTop > 0 ? deltaTop : 0;
+        floats[2] = deltaRight < 0 ? deltaRight : 0;
+        floats[3] = deltaBottom < 0 ? deltaBottom : 0;
+
+        Log.i(TAG, "floats before: " + Arrays.toString(floats));
+
+//        mTempMatrix.reset();
+//        mTempMatrix.mapPoints(floats);
+//        Log.i(TAG, "floats end: "+ Arrays.toString(floats));
+
+        return floats;
+    }
+
+    public boolean isImageWrapCropBounds() {
+        return isWrapperInCropBounds(mCurrentImageCorners);
+    }
+
+    private boolean isWrapperInCropBounds(float[] imageCorners) {
+//        float[] corners = RectUtils.createCorners(mCropRect);
+        mTempMatrix.reset();
+
+        float[] tempImageCorners = Arrays.copyOf(imageCorners, imageCorners.length);
+        mTempMatrix.mapPoints(tempImageCorners);
+        float[] corpImageCorners = RectUtils.createCorners(mCropRect);
+        mTempMatrix.mapPoints(corpImageCorners);
+
+        RectF tempRect = RectUtils.trapToRect(tempImageCorners);
+        RectF corpRect = RectUtils.trapToRect(corpImageCorners);
+//        RectF rectF1 = RectUtils.trapToRect(tempImageCorners);
+        Log.i(TAG, "tempRect: " + tempRect);
+        Log.i(TAG, "corpRect: " + corpRect);
+//        RectF rectF = RectUtils.array2Rect(tempImageCorners);
+        return tempRect.contains(corpRect);
     }
 
     @Override
@@ -202,8 +344,73 @@ public class CropImageView extends TransformImageView {
             float newScale = CubicEasing.easeInOut(currentMs, 0, mDeltaScale, mDurationMs);
 
             if (currentMs < mDurationMs) {
-                cropImageView.zoomImImage(mOldScale + newScale, mCenterX, mCenterY);
+                cropImageView.zoomInImage(mOldScale + newScale, mCenterX, mCenterY);
                 cropImageView.post(this);
+            } else {
+                cropImageView.setImageToWrapCropBounds();
+            }
+
+        }
+    }
+
+    private static class ImageWrapCropBoundsRunnable implements Runnable {
+        private WeakReference<CropImageView> mCropImageView;
+
+        private long mDurationMs;
+        private float mCurrentScale;
+        private float mDeltaScale;
+
+        private float mCurrentX;
+        private float mCurrentY;
+
+        private float mDeltaX;
+        private float mDeltaY;
+
+        //是否只是平移
+        private boolean isWrapperInCropBounds;
+
+        private long mStartTime;
+
+
+        public ImageWrapCropBoundsRunnable(CropImageView cropImageView, long durationMs,
+                                           float currentScale, float deltaScale,
+                                           float currentX, float currentY,
+                                           float deltaX, float deltaY,
+                                           boolean isWrapperInCropBounds) {
+            mCropImageView = new WeakReference<>(cropImageView);
+            mDurationMs = durationMs;
+            mCurrentScale = currentScale;
+            mDeltaScale = deltaScale;
+            mDeltaX = deltaX;
+            mDeltaY = deltaY;
+            this.mCurrentX = currentX;
+            this.mCurrentY = currentY;
+            this.isWrapperInCropBounds = isWrapperInCropBounds;
+
+            mStartTime = System.currentTimeMillis();
+        }
+
+        @Override
+        public void run() {
+            CropImageView cropImageView = mCropImageView.get();
+            if (cropImageView == null) {
+                return;
+            }
+            long now = System.currentTimeMillis();
+            float currentMs = Math.min(mDurationMs, now - mStartTime);
+
+            float newX = CubicEasing.easeOut(currentMs, 0, mDeltaX, mDurationMs);
+            float newY = CubicEasing.easeOut(currentMs, 0, mDeltaY, mDurationMs);
+            float newScale = CubicEasing.easeInOut(currentMs, 0, mDeltaScale, mDurationMs);
+
+            if (currentMs < mDurationMs) {
+                cropImageView.postTranslate(newX - (cropImageView.mCurrentImageCenter[0] - mCurrentX), newY - (cropImageView.mCurrentImageCenter[1] - mCurrentY));
+                if (!isWrapperInCropBounds) {
+                    cropImageView.zoomInImage(mCurrentScale + newScale, cropImageView.mCropRect.centerX(), cropImageView.mCropRect.centerY());
+                }
+                if (!cropImageView.isImageWrapCropBounds()) {
+                    cropImageView.post(this);
+                }
             }
 
         }
